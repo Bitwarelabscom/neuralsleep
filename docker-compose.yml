@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  semantic-lnn:
+    build:
+      context: .
+      dockerfile: Dockerfile.semantic
+    container_name: neuralsleep-semantic
+    ports:
+      - "5000:5000"
+    environment:
+      - SEMANTIC_LNN_PORT=5000
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SEMANTIC_HIDDEN_SIZE=${SEMANTIC_HIDDEN_SIZE:-1024}
+      - SEMANTIC_LEARNING_RATE=${SEMANTIC_LEARNING_RATE:-0.0001}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - NODE_ENV=${NODE_ENV:-development}
+    volumes:
+      - ./models:/opt/neuralsleep/models
+      - ./src:/opt/neuralsleep/src:ro
+    restart: unless-stopped
+    networks:
+      - neuralsleep-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  episodic-lnn:
+    build:
+      context: .
+      dockerfile: Dockerfile.episodic
+    container_name: neuralsleep-episodic
+    ports:
+      - "5001:5001"
+    environment:
+      - EPISODIC_LNN_PORT=5001
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - EPISODIC_HIDDEN_SIZE=${EPISODIC_HIDDEN_SIZE:-512}
+      - EPISODIC_LEARNING_RATE=${EPISODIC_LEARNING_RATE:-0.001}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - NODE_ENV=${NODE_ENV:-development}
+    volumes:
+      - ./models:/opt/neuralsleep/models
+      - ./src:/opt/neuralsleep/src:ro
+    restart: unless-stopped
+    networks:
+      - neuralsleep-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  neuralsleep-net:
+    driver: bridge
+
+volumes:
+  models:
+    driver: local

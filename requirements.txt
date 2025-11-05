@@ -1,0 +1,25 @@
+# NeuralSleep Dependencies
+# Neural Networks
+torch>=2.5.0
+numpy>=1.24.0
+scipy>=1.11.0
+torchdiffeq>=0.2.3
+
+# Web Services
+flask==3.0.0
+flask-cors==4.0.0
+
+# Database
+psycopg2-binary==2.9.9
+redis==5.0.0
+
+# Machine Learning
+scikit-learn==1.3.2
+
+# Utilities
+python-dotenv==1.0.0
+requests==2.31.0
+
+# Testing
+pytest==7.4.3
+pytest-cov==4.1.0
