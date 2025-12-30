@@ -1,0 +1,29 @@
+FROM python:3.11-slim
+
+WORKDIR /opt/neuralsleep
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy source code
+COPY src/ ./src/
+
+# Create directories
+RUN mkdir -p models logs
+
+# Environment
+ENV PYTHONUNBUFFERED=1
+ENV WORKING_LNN_PORT=5002
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:5002/health || exit 1
+
+# Run service
+CMD ["python", "src/services/working_lnn_service.py"]

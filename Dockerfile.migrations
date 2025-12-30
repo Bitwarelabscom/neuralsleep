@@ -1,0 +1,74 @@
+# NeuralSleep Database Migrations
+#
+# Runs SQL migrations against PostgreSQL on startup.
+# Used as an init container or one-shot job in docker-compose.
+
+FROM postgres:16-alpine
+
+# Copy migration scripts
+COPY src/persistence/migrations/ /migrations/
+
+# Install bash for script execution
+RUN apk add --no-cache bash
+
+# Create migration runner script
+COPY <<'EOF' /run-migrations.sh
+#!/bin/bash
+set -e
+
+PGHOST="${POSTGRES_HOST:-postgres}"
+PGPORT="${POSTGRES_PORT:-5432}"
+PGUSER="${POSTGRES_USER:-neuralsleep_user}"
+PGPASSWORD="${POSTGRES_PASSWORD:-neuralsleep_dev}"
+PGDATABASE="${POSTGRES_DB:-neuralsleep}"
+
+echo "=== NeuralSleep Database Migrations ==="
+echo "Host: $PGHOST:$PGPORT"
+echo "Database: $PGDATABASE"
+echo "User: $PGUSER"
+
+# Wait for PostgreSQL to be ready
+echo "Waiting for PostgreSQL..."
+until PGPASSWORD="$PGPASSWORD" psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -c '\q' 2>/dev/null; do
+    echo "PostgreSQL not ready, waiting..."
+    sleep 2
+done
+echo "PostgreSQL is ready!"
+
+# Create migrations tracking table if it doesn't exist
+PGPASSWORD="$PGPASSWORD" psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" <<EOSQL
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version VARCHAR(255) PRIMARY KEY,
+    applied_at TIMESTAMPTZ DEFAULT NOW()
+);
+EOSQL
+
+# Run each migration in order
+for migration in /migrations/*.sql; do
+    if [ -f "$migration" ]; then
+        filename=$(basename "$migration")
+
+        # Check if already applied
+        applied=$(PGPASSWORD="$PGPASSWORD" psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -tAc \
+            "SELECT COUNT(*) FROM schema_migrations WHERE version = '$filename'")
+
+        if [ "$applied" = "0" ]; then
+            echo "Applying migration: $filename"
+            PGPASSWORD="$PGPASSWORD" psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -f "$migration"
+
+            # Record migration
+            PGPASSWORD="$PGPASSWORD" psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -c \
+                "INSERT INTO schema_migrations (version) VALUES ('$filename')"
+            echo "Applied: $filename"
+        else
+            echo "Already applied: $filename"
+        fi
+    fi
+done
+
+echo "=== Migrations Complete ==="
+EOF
+
+RUN chmod +x /run-migrations.sh
+
+ENTRYPOINT ["/run-migrations.sh"]

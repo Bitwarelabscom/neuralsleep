@@ -1,26 +1,102 @@
 version: '3.8'
 
 services:
+  # ==================== Database Services ====================
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: neuralsleep-postgres
+    environment:
+      - POSTGRES_DB=neuralsleep
+      - POSTGRES_USER=neuralsleep_user
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-neuralsleep_dev}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./src/persistence/migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:5435:5432"
+    networks:
+      - neuralsleep-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U neuralsleep_user -d neuralsleep"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: neuralsleep-redis
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "127.0.0.1:6381:6379"
+    networks:
+      - neuralsleep-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ==================== Migrations ====================
+
+  migrations:
+    build:
+      context: .
+      dockerfile: Dockerfile.migrations
+    container_name: neuralsleep-migrations
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=neuralsleep
+      - POSTGRES_USER=neuralsleep_user
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-neuralsleep_dev}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - neuralsleep-net
+    restart: "no"
+
+  # ==================== LNN Services ====================
+
   semantic-lnn:
     build:
       context: .
       dockerfile: Dockerfile.semantic
     container_name: neuralsleep-semantic
     ports:
-      - "5000:5000"
+      - "127.0.0.1:5000:5000"
     environment:
       - SEMANTIC_LNN_PORT=5000
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
+      - POSTGRES_DB=neuralsleep
+      - POSTGRES_USER=neuralsleep_user
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-neuralsleep_dev}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - SEMANTIC_HIDDEN_SIZE=${SEMANTIC_HIDDEN_SIZE:-1024}
       - SEMANTIC_LEARNING_RATE=${SEMANTIC_LEARNING_RATE:-0.0001}
+      - DB_POOL_MIN=5
+      - DB_POOL_MAX=20
+      - REDIS_POOL_MAX=50
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - NODE_ENV=${NODE_ENV:-development}
     volumes:
       - ./models:/opt/neuralsleep/models
       - ./src:/opt/neuralsleep/src:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
     restart: unless-stopped
     networks:
       - neuralsleep-net
@@ -29,7 +105,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s
 
   episodic-lnn:
     build:
@@ -37,20 +113,33 @@ services:
       dockerfile: Dockerfile.episodic
     container_name: neuralsleep-episodic
     ports:
-      - "5001:5001"
+      - "127.0.0.1:5001:5001"
     environment:
       - EPISODIC_LNN_PORT=5001
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
+      - POSTGRES_DB=neuralsleep
+      - POSTGRES_USER=neuralsleep_user
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-neuralsleep_dev}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - EPISODIC_HIDDEN_SIZE=${EPISODIC_HIDDEN_SIZE:-512}
       - EPISODIC_LEARNING_RATE=${EPISODIC_LEARNING_RATE:-0.001}
+      - DB_POOL_MIN=5
+      - DB_POOL_MAX=20
+      - REDIS_POOL_MAX=50
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - NODE_ENV=${NODE_ENV:-development}
     volumes:
       - ./models:/opt/neuralsleep/models
       - ./src:/opt/neuralsleep/src:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
     restart: unless-stopped
     networks:
       - neuralsleep-net
@@ -59,12 +148,108 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s
+
+  working-lnn:
+    build:
+      context: .
+      dockerfile: Dockerfile.working
+    container_name: neuralsleep-working
+    ports:
+      - "127.0.0.1:5002:5002"
+    environment:
+      - WORKING_LNN_PORT=5002
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=neuralsleep
+      - POSTGRES_USER=neuralsleep_user
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-neuralsleep_dev}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - WORKING_HIDDEN_SIZE=${WORKING_HIDDEN_SIZE:-256}
+      - WORKING_LEARNING_RATE=${WORKING_LEARNING_RATE:-0.01}
+      - DB_POOL_MIN=5
+      - DB_POOL_MAX=20
+      - REDIS_POOL_MAX=50
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - NODE_ENV=${NODE_ENV:-development}
+    volumes:
+      - ./models:/opt/neuralsleep/models
+      - ./src:/opt/neuralsleep/src:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    networks:
+      - neuralsleep-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  consciousness:
+    build:
+      context: .
+      dockerfile: Dockerfile.consciousness
+    container_name: neuralsleep-consciousness
+    ports:
+      - "127.0.0.1:5003:5003"
+    environment:
+      - CONSCIOUSNESS_PORT=5003
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=neuralsleep
+      - POSTGRES_USER=neuralsleep_user
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-neuralsleep_dev}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - ENABLE_PHI_COMPUTATION=true
+      - PHI_COMPUTATION_INTERVAL=3600
+      - DB_POOL_MIN=5
+      - DB_POOL_MAX=20
+      - REDIS_POOL_MAX=50
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - NODE_ENV=${NODE_ENV:-development}
+    volumes:
+      - ./src:/opt/neuralsleep/src:ro
+      - ./research-data:/opt/neuralsleep/research-data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
+      semantic-lnn:
+        condition: service_healthy
+      episodic-lnn:
+        condition: service_healthy
+      working-lnn:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - neuralsleep-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
 networks:
   neuralsleep-net:
     driver: bridge
 
 volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
   models:
     driver: local

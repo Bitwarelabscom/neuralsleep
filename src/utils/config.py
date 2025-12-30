@@ -26,14 +26,14 @@ class Config:
 
         # Database
         self.postgres_host = os.getenv('POSTGRES_HOST', 'localhost')
-        self.postgres_port = int(os.getenv('POSTGRES_PORT', 5433))
-        self.postgres_db = os.getenv('POSTGRES_DB', 'memorycore')
-        self.postgres_user = os.getenv('POSTGRES_USER', 'memorycore_user')
-        self.postgres_password = os.getenv('POSTGRES_PASSWORD', '')
+        self.postgres_port = int(os.getenv('POSTGRES_PORT', 5435))
+        self.postgres_db = os.getenv('POSTGRES_DB', 'neuralsleep')
+        self.postgres_user = os.getenv('POSTGRES_USER', 'neuralsleep_user')
+        self.postgres_password = os.getenv('POSTGRES_PASSWORD', 'neuralsleep_dev')
 
         # Redis
         self.redis_host = os.getenv('REDIS_HOST', 'localhost')
-        self.redis_port = int(os.getenv('REDIS_PORT', 6380))
+        self.redis_port = int(os.getenv('REDIS_PORT', 6381))
 
         # Model Configuration
         self.semantic_hidden_size = int(os.getenv('SEMANTIC_HIDDEN_SIZE', 1024))
