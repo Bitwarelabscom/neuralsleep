@@ -1,9 +1,6 @@
 # Git Instructions for Gitea Instance
 
-## Server Details
-- **Gitea URL**: http://172.21.0.1:3001
-- **Account**: claude@bitwarelabs.com
-- **Password**: henke12345
+
 
 ## Clone Repository
 
